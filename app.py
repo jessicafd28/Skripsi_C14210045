@@ -21,11 +21,9 @@ def process():
     if 'file' not in request.files:
         return jsonify({"error": "No file part in the request"}), 400
 
-    # Retrieve the file from request.files
     file = request.files['file']
     print(request.files['file'])
 
-    # If the file has no filename
     if file.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
@@ -37,7 +35,6 @@ def process():
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx", dir=".", mode='w+b') as tmp:
             hasil_df.to_excel(tmp.name, index=False)
             tmp.flush()
-        # Save info to session or pass directly
         session['silhouette'] = silhouette
         session['dbi'] = dbi
         session['download_filename'] = tmp.name 
@@ -80,8 +77,7 @@ def result():
                 else ('Medium' if x <= cutpoints.loc[0.66, 'Monetary'] else 'High')
     )
 
-    
-    # 3. (Optional) Combine into one descriptor
+    # gabungkan nilai LRFM per pelanggan
     df_final['LRFM_combo'] = (
         df_final['L_Score'] + ' Length, ' +
         df_final['R_Score'] + ' Recency, ' +
@@ -90,7 +86,7 @@ def result():
     )
 
 
-    # Mapping dictionary (unchanged)
+    # Mapping dictionary
     lrfm_to_cluster = {
         (('Medium'),('Medium','Low'), ('Low', 'Medium','High'), 'High'): 'High Value Loyal Customers',
         ('High', ('Medium','High'),('Medium','High'), 'High'): 'Platinum Customers',
@@ -114,18 +110,18 @@ def result():
         'Other': 'Uncertain Customers',
     }
 
-    # Calculate mode of scores per cluster
+    # Lihat modus per cluster
     cluster_avgs = df_final.groupby('Cluster')[['L_Score', 'R_Score', 'F_Score', 'M_Score']].agg(
         lambda x: x.mode().iloc[0] if not x.mode().empty else 'Uncertain'
     ).reset_index()
 
-    # Create combo label LRFM per cluster
+    # Concat nilai LRFM untuk cluster
     cluster_avgs['LRFM_combo'] = cluster_avgs['L_Score'].astype(str) + ' Length, ' + \
         cluster_avgs['R_Score'].astype(str) + ' Recency, ' + \
         cluster_avgs['F_Score'].astype(str) + ' Frequency, ' + \
         cluster_avgs['M_Score'].astype(str) + ' Monetary'
 
-    # Map cluster names; default to combo label or 'Uncertain Customers'
+    # Map nama cluster
     def map_cluster_name(row):
         combo = (
             row['L_Score'],
@@ -133,9 +129,8 @@ def result():
             row['F_Score'],
             row['M_Score']
         )
-        # Match tuple with possible 'tuple of values' keys in lrfm_to_cluster
+        # Mencocokkan kombinasi skor LRFM dengan dictionary
         for key in lrfm_to_cluster.keys():
-            # Handle keys with tuple elements (like ('High', ('Low','Medium'), ...))
             if isinstance(key, tuple) and len(key) == 4:
                 match = True
                 for i, val in enumerate(key):
@@ -149,7 +144,6 @@ def result():
                             break
                 if match:
                     return lrfm_to_cluster[key]
-        # Fallback
         return lrfm_to_cluster.get('Other', 'Uncertain Customers')
 
     cluster_avgs['Cluster Name'] = cluster_avgs.apply(map_cluster_name, axis=1)
@@ -158,10 +152,10 @@ def result():
         zip(cluster_avgs['Cluster'], cluster_avgs['Cluster Name'])
     )
 
-    # To avoid overwriting, add cluster label to cluster name
+    # Supaya tidak terjadi overwriting
     cluster_name_map = {k: f"{v} (Cluster {k})" for k, v in cluster_name_map.items()}
 
-    # Prepare data for HTML render
+    # Siapkan data untuk HTML render
     selected_columns = ['Nama Pelanggan','L_Score', 'R_Score', 'F_Score', 'M_Score']
     cluster_tables = {}
     columns_to_display = [col for col in selected_columns if col != 'Cluster']
@@ -178,13 +172,13 @@ def result():
         cluster_tables[cluster_name] = cluster_df.to_html(
             classes="table table-striped table-bordered", index=False
         )
-   # Drop unneeded columns before saving
+   
     df_final = df_final.drop(columns=[
         'Tipe Perjalanan', 'Length Trip', 'Total Spending',
         'Length', 'Recency', 'Frequency', 'Monetary'
-    ], errors='ignore')  # errors='ignore' will skip if any column doesn't exist
+    ], errors='ignore')  
     df_final = df_final.drop_duplicates(subset=['Nama Pelanggan']);
-    # Save processed DataFrame
+    # Simpan hasil segmentasi 
     tmp_filename = "processed_tmp.xlsx"
     df_final.to_excel(tmp_filename, index=False)
 
